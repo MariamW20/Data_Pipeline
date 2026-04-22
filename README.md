@@ -1,11 +1,11 @@
-# 🔬 Global Patent Intelligence Data Pipeline
+# Global Patent Intelligence Data Pipeline
 
 A complete data engineering project that collects, cleans, stores and analyzes
 real-world patent data from the USPTO PatentsView dataset.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 BigData_Individual/
@@ -40,7 +40,7 @@ Download Python 3.10+ from https://www.python.org/downloads/
 
 ### 2. Clone / Download this repo
 ```bash
-git clone https://github.com/YOUR_USERNAME/patent-pipeline.git
+git clone https://github.com/MariamW20/Data_Pipeline.git
 cd patent-pipeline
 ```
 
@@ -70,16 +70,16 @@ python 03_load_database.py
 # Step 4 — Run analysis + generate reports
 python 04_analyze.py
 
-# (Bonus) Step 5 — Generate charts
+# Step 5 — Generate charts
 python 05_visualize.py
 
-# (Bonus) Step 6 — Launch interactive dashboard
+# Step 6 — Launch interactive dashboard
 streamlit run 06_dashboard.py
 ```
 
 ---
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### `patents`
 | Column | Type | Description |
@@ -116,7 +116,7 @@ streamlit run 06_dashboard.py
 
 ---
 
-## 📊 SQL Queries
+## SQL Queries
 
 | # | Query | Description |
 |---|-------|-------------|
@@ -130,7 +130,7 @@ streamlit run 06_dashboard.py
 
 ---
 
-## 📦 Reports Generated
+## Reports Generated
 
 | File | Description |
 |------|-------------|
@@ -146,7 +146,7 @@ streamlit run 06_dashboard.py
 
 ---
 
-## 🌍 Country Mapping Notes
+## Country Mapping Notes
 
 Country values are generated using this join path:
 
@@ -166,7 +166,7 @@ Why code-like values may still appear occasionally:
 
 ---
 
-## 📘 Requirement Alignment
+## Requirement Alignment
 
 This implementation follows the project brief in `Data Pipeline Mini Project.pdf` and uses
 `PV_grant_data_dictionary.pdf` as the field-level reference for granted patent data.
