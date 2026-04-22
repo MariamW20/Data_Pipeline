@@ -372,6 +372,6 @@ if __name__ == "__main__":
     clean_relationships(patents)
 
     print("=" * 60)
-    print("✅  Cleaning complete.")
-    print(f"   Clean files saved to: {CLEAN_DIR.resolve()}")
-    print("   Next step → run  03_load_database.py")
+    print("Cleaning complete.")
+    print(f"Clean files saved to: {CLEAN_DIR.resolve()}")
+    

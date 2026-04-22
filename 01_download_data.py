@@ -17,14 +17,16 @@ DATA_DIR = str(RAW_DIR)
 # PatentsView bulk data base URL (granted patents, disambiguated)
 BASE_URL = "https://s3.amazonaws.com/data.patentsview.org/download/"
 
-# Files to download - these are the core tables we need
+# Files to download - these are the tables we need
 # Full filenames from the PatentsView bulk download page
 FILES = {
     "patent": "g_patent.tsv.zip",
     "inventor": "g_inventor_disambiguated.tsv.zip",
     "assignee": "g_assignee_disambiguated.tsv.zip",
-    "patent_inventor": "g_patent_inventor.tsv.zip",
-    "patent_assignee": "g_patent_assignee.tsv.zip",
+    "patent_inventor": "g_persistent_inventor.tsv.zip",
+    "patent_assignee": "g_persistent_assignee.tsv.zip",
+    "location": "g_location_disambiguated.tsv.zip",
+    "pct_data": "g_pct_data.tsv.zip",
 }
 
 
@@ -76,5 +78,4 @@ if __name__ == "__main__":
     for name, filename in FILES.items():
         download_and_extract(name, filename)
 
-    print("\n[OK] All files downloaded successfully.")
-    print("    Next step -> run 02_clean_data.py")
+    print("\nAll files downloaded successfully.")

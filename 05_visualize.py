@@ -176,5 +176,5 @@ if __name__ == "__main__":
     chart_top_inventors(conn)
 
     conn.close()
-    print(f"\n✅  Charts saved to: {REPORTS_DIR.resolve()}")
-    print("   Optional next step → run  06_dashboard.py  for Streamlit")
+    print(f"\nCharts saved to: {REPORTS_DIR.resolve()}")
+    

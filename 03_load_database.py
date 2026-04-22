@@ -175,5 +175,5 @@ if __name__ == "__main__":
         print(f"  {table:20s}  {n:>12,}")
 
     conn.close()
-    print(f"\n✅  Database saved → {DB_PATH.resolve()}")
-    print("   Next step → run  04_analyze.py")
+    print(f"\nDatabase saved to: {DB_PATH.resolve()}")
+

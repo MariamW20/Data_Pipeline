@@ -285,5 +285,5 @@ if __name__ == "__main__":
     export_sql_queries()
 
     conn.close()
-    print("\n✅  Analysis complete. Reports saved to:", REPORTS_DIR.resolve())
-    print("   Optional next step → run  05_visualize.py  for charts")
+    print("\nAnalysis complete. Reports saved to:", REPORTS_DIR.resolve())
+    
