@@ -1,5 +1,5 @@
 """
-Step 6 (Bonus): Streamlit dashboard for interactive exploration.
+Step 6: Streamlit dashboard for interactive exploration.
 Run with:  streamlit run scripts/06_dashboard.py
 """
 
@@ -18,7 +18,7 @@ from project_paths import DB_PATH
 
 st.set_page_config(
     page_title="Global Patent Intelligence",
-    page_icon="🔬",
+    page_icon=":material/travel_explore:",
     layout="wide",
 )
 
@@ -28,8 +28,70 @@ st.markdown("""
     .main { background-color: #0f172a; }
     h1, h2, h3 { color: #38bdf8 !important; }
     .metric-container { background: #1e293b; border-radius: 8px; padding: 12px; }
+    .hero-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.1rem;
+    }
+    .hero-title h1 {
+        margin: 0;
+        font-size: 2rem;
+        color: #e2e8f0;
+    }
+    .icon-chip {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #0ea5e9 0%, #22d3ee 100%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 16px rgba(14, 165, 233, 0.35);
+    }
+    .icon-chip svg {
+        width: 20px;
+        height: 20px;
+        stroke: #0f172a;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .section-head {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        margin-bottom: 0.25rem;
+    }
+    .section-head h3 {
+        margin: 0;
+        color: #e2e8f0 !important;
+        font-size: 1.1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+ICONS = {
+    "dashboard": """<svg viewBox='0 0 24 24'><path d='M3 12h18'/><path d='M12 3v18'/><circle cx='12' cy='12' r='8'/></svg>""",
+    "trends": """<svg viewBox='0 0 24 24'><polyline points='3 17 9 11 13 15 21 7'/><polyline points='14 7 21 7 21 14'/></svg>""",
+    "inventors": """<svg viewBox='0 0 24 24'><circle cx='9' cy='8' r='3'/><path d='M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6'/><path d='M16 11a3 3 0 1 0 0-6'/><path d='M21 20c0-2.3-1.3-4.2-3.2-5.2'/></svg>""",
+    "companies": """<svg viewBox='0 0 24 24'><rect x='3' y='7' width='7' height='14'/><rect x='14' y='3' width='7' height='18'/><path d='M6.5 11h0'/><path d='M6.5 15h0'/><path d='M17.5 8h0'/><path d='M17.5 12h0'/><path d='M17.5 16h0'/></svg>""",
+    "countries": """<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/><path d='M3 12h18'/><path d='M12 3a15 15 0 0 1 0 18'/><path d='M12 3a15 15 0 0 0 0 18'/></svg>""",
+    "search": """<svg viewBox='0 0 24 24'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>""",
+}
+
+
+def section_header(title: str, icon_key: str) -> None:
+    st.markdown(
+        f"""
+        <div class='section-head'>
+            <span class='icon-chip'>{ICONS[icon_key]}</span>
+            <h3>{title}</h3>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ─── DB helper ────────────────────────────────────────────────────────────────
@@ -44,7 +106,15 @@ def query(sql: str, params: tuple | None = None) -> pd.DataFrame:
 
 
 # ─── Header ───────────────────────────────────────────────────────────────────
-st.title("🔬 Global Patent Intelligence Dashboard")
+st.markdown(
+    f"""
+    <div class='hero-title'>
+        <span class='icon-chip'>{ICONS['dashboard']}</span>
+        <h1>Global Patent Intelligence Dashboard</h1>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.caption("PatentsView data — USPTO Granted Patents")
 
 if not os.path.exists(DB_PATH):
@@ -68,13 +138,12 @@ st.divider()
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📈 Trends", "🏆 Top Inventors", "🏢 Top Companies",
-    "🌍 Countries", "🔍 Search Patents"
+    "Trends", "Top Inventors", "Top Companies", "Countries", "Search Patents"
 ])
 
 # ── Tab 1: Trends ─────────────────────────────────────────────────────────────
 with tab1:
-    st.subheader("Patents Granted per Year")
+    section_header("Patents Granted per Year", "trends")
     year_df = query("""
         SELECT year, COUNT(*) AS patent_count
         FROM patents
@@ -83,12 +152,13 @@ with tab1:
     """)
     st.line_chart(year_df.set_index("year")["patent_count"])
 
-    st.subheader("Recent Decade Detail")
+    section_header("Recent Decade Detail", "trends")
     recent = year_df[year_df["year"] >= year_df["year"].max() - 10]
     st.bar_chart(recent.set_index("year")["patent_count"])
 
 # ── Tab 2: Top Inventors ──────────────────────────────────────────────────────
 with tab2:
+    section_header("Top Inventors", "inventors")
     n_inv = st.slider("Number of top inventors", 5, 50, 15)
     inv_df = query(f"""
         SELECT i.name AS inventor, i.country,
@@ -104,6 +174,7 @@ with tab2:
 
 # ── Tab 3: Top Companies ──────────────────────────────────────────────────────
 with tab3:
+    section_header("Top Companies", "companies")
     n_comp = st.slider("Number of top companies", 5, 50, 15)
     comp_df = query(f"""
         SELECT c.name AS company, c.country,
@@ -119,6 +190,7 @@ with tab3:
 
 # ── Tab 4: Countries ──────────────────────────────────────────────────────────
 with tab4:
+    section_header("Countries", "countries")
     cty_df = query("""
         SELECT i.country, COUNT(DISTINCT r.patent_id) AS patent_count,
                ROUND(COUNT(DISTINCT r.patent_id)*100.0/(SELECT COUNT(*) FROM patents),2) AS pct
@@ -134,7 +206,7 @@ with tab4:
 
 # ── Tab 5: Search Patents ─────────────────────────────────────────────────────
 with tab5:
-    st.subheader("Search Patent Titles")
+    section_header("Search Patent Titles", "search")
     search = st.text_input("Enter keyword(s)", placeholder="e.g. machine learning")
     year_filter = st.slider("Year range", 1976, 2024, (2010, 2024))
 
