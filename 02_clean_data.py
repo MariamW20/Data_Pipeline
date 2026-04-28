@@ -4,6 +4,8 @@ Produces clean CSVs ready for loading into SQLite.
 """
 
 import os
+import sqlite3
+import csv
 import pandas as pd
 from project_paths import CLEAN_DIR, RAW_DIR, ensure_directories
 
@@ -15,8 +17,10 @@ except Exception:
 # ─── Paths ────────────────────────────────────────────────────────────────────
 ensure_directories()
 
-# Limit rows while developing/testing  (set to None for full dataset)
-SAMPLE_ROWS = 200_000   # ~200 K patents — fast and representative
+# Patent row limit configuration.
+# Default is full load. To sample, set PATENT_SAMPLE_ROWS env var, e.g. 200000.
+_sample_rows_env = os.getenv("PATENT_SAMPLE_ROWS", "").strip()
+SAMPLE_ROWS = int(_sample_rows_env) if _sample_rows_env else None
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,7 +80,6 @@ def iter_tsv_chunks(filename: str, usecols: list, chunksize: int = 500_000, nrow
         sep="\t",
         usecols=selected_cols,
         nrows=nrows,
-        dtype=str,
         chunksize=chunksize,
         engine="python",
         on_bad_lines="skip",
@@ -87,6 +90,66 @@ def save_clean(df: pd.DataFrame, name: str) -> None:
     path = CLEAN_DIR / f"clean_{name}.csv"
     df.to_csv(path, index=False)
     print(f"  ✓ Saved  {path}  ({len(df):,} rows)\n")
+
+
+def prepare_abstract_lookup_db() -> sqlite3.Connection | None:
+    """Build a temporary on-disk lookup table for patent abstracts."""
+    abstract_file = RAW_DIR / "g_patent_abstract.tsv"
+    if not abstract_file.exists():
+        print("    [INFO] g_patent_abstract.tsv not found; abstracts will be empty")
+        return None
+
+    tmp_db = CLEAN_DIR / "_abstract_lookup.sqlite"
+    if tmp_db.exists():
+        tmp_db.unlink()
+
+    conn = sqlite3.connect(tmp_db)
+    conn.execute("CREATE TABLE abstracts (patent_id TEXT, patent_abstract TEXT)")
+
+    print("  Streaming g_patent_abstract.tsv …", flush=True)
+    with open(abstract_file, "r", encoding="utf-8", errors="replace", newline="") as f:
+        reader = csv.reader(f, delimiter="\t")
+        header = next(reader, None)
+        if not header:
+            conn.execute("CREATE INDEX idx_abstracts_patent_id ON abstracts(patent_id)")
+            conn.commit()
+            return conn
+
+        header = [h.strip().strip('"') for h in header]
+        id_idx = header.index("patent_id") if "patent_id" in header else None
+        abs_idx = header.index("patent_abstract") if "patent_abstract" in header else None
+        if id_idx is None or abs_idx is None:
+            conn.execute("CREATE INDEX idx_abstracts_patent_id ON abstracts(patent_id)")
+            conn.commit()
+            return conn
+
+        batch = []
+        for row in reader:
+            if not row:
+                continue
+            if id_idx >= len(row):
+                continue
+            patent_id = (row[id_idx] or "").strip().strip('"')
+            if not patent_id:
+                continue
+
+            patent_abstract = ""
+            if abs_idx < len(row):
+                patent_abstract = (row[abs_idx] or "").strip().strip('"')
+
+            batch.append((patent_id, patent_abstract))
+            if len(batch) >= 50_000:
+                conn.executemany("INSERT INTO abstracts(patent_id, patent_abstract) VALUES (?, ?)", batch)
+                conn.commit()
+                batch.clear()
+
+        if batch:
+            conn.executemany("INSERT INTO abstracts(patent_id, patent_abstract) VALUES (?, ?)", batch)
+            conn.commit()
+
+    conn.execute("CREATE INDEX idx_abstracts_patent_id ON abstracts(patent_id)")
+    conn.commit()
+    return conn
 
 
 COUNTRY_FALLBACK = {
@@ -148,19 +211,120 @@ def load_location_country_map() -> pd.DataFrame:
 # ─── 1. Patents ───────────────────────────────────────────────────────────────
 def clean_patents() -> pd.DataFrame:
     print("\n── Patents ──────────────────────────────────────────────────")
+
+    # Full-load mode: stream g_patent.tsv in chunks and use an on-disk abstract lookup.
+    if SAMPLE_ROWS is None:
+        lookup_conn = prepare_abstract_lookup_db()
+        out_path = CLEAN_DIR / "clean_patents.csv"
+        if out_path.exists():
+            out_path.unlink()
+
+        total_saved = 0
+        total_dropped = 0
+        first_write = True
+
+        for chunk in iter_tsv_chunks(
+            "g_patent.tsv",
+            usecols=["patent_id", "patent_title", "patent_date", "patent_type", "wipo_kind"],
+            chunksize=300_000,
+        ):
+            chunk["patent_id"] = chunk["patent_id"].astype(str).str.strip()
+            if "patent_type" not in chunk.columns:
+                chunk["patent_type"] = ""
+            if "wipo_kind" not in chunk.columns:
+                chunk["wipo_kind"] = ""
+
+            if lookup_conn is not None:
+                ids = chunk[["patent_id"]].drop_duplicates()
+                ids.to_sql("chunk_ids", lookup_conn, if_exists="replace", index=False)
+                abs_df = pd.read_sql_query(
+                    """
+                    SELECT a.patent_id, a.patent_abstract
+                    FROM abstracts a
+                    INNER JOIN chunk_ids c ON a.patent_id = c.patent_id
+                    """,
+                    lookup_conn,
+                )
+                abstract_map = dict(zip(abs_df["patent_id"], abs_df["patent_abstract"]))
+                chunk["patent_abstract"] = chunk["patent_id"].map(abstract_map).fillna("")
+            else:
+                chunk["patent_abstract"] = ""
+
+            chunk = chunk.rename(columns={
+                "patent_title": "title",
+                "patent_abstract": "abstract",
+                "patent_date": "filing_date",
+                "patent_type": "patent_type",
+                "wipo_kind": "wipo_kind",
+            })
+
+            chunk["filing_date"] = pd.to_datetime(chunk["filing_date"], errors="coerce")
+            chunk["year"] = chunk["filing_date"].dt.year.astype("Int64")
+
+            before = len(chunk)
+            chunk = chunk.dropna(subset=["patent_id", "filing_date"])
+            total_dropped += (before - len(chunk))
+
+            chunk["title"] = chunk["title"].astype(str).str.strip()
+            chunk["abstract"] = chunk["abstract"].fillna("").astype(str).str.strip()
+            chunk["patent_type"] = chunk["patent_type"].fillna("").astype(str).str.strip().str.lower()
+            chunk = chunk[chunk["patent_type"].isin(["utility", "reissue", ""])]
+
+            chunk = chunk[["patent_id", "title", "abstract", "filing_date", "year", "patent_type", "wipo_kind"]]
+            chunk["filing_date"] = chunk["filing_date"].dt.strftime("%Y-%m-%d")
+
+            chunk.to_csv(out_path, index=False, mode="w" if first_write else "a", header=first_write)
+            first_write = False
+            total_saved += len(chunk)
+
+        if lookup_conn is not None:
+            lookup_db = CLEAN_DIR / "_abstract_lookup.sqlite"
+            lookup_conn.close()
+            if lookup_db.exists():
+                lookup_db.unlink()
+
+        print(f"  Dropped {total_dropped:,} rows with missing id/date")
+        print(f"  ✓ Saved  {out_path}  ({total_saved:,} rows)\n")
+        return None
+
     df = read_tsv(
         "g_patent.tsv",
-        usecols=["patent_id", "patent_title", "patent_abstract",
-                 "patent_date", "patent_type", "wipo_kind"],
+        usecols=["patent_id", "patent_title", "patent_date", "patent_type", "wipo_kind"],
         nrows=SAMPLE_ROWS,
     )
 
-    if "patent_abstract" not in df.columns:
-        df["patent_abstract"] = ""
+    # Ensure stable join/filter keys across mixed-source tables.
+    df["patent_id"] = df["patent_id"].astype(str).str.strip()
+
+    df["patent_abstract"] = ""
     if "patent_type" not in df.columns:
         df["patent_type"] = ""
     if "wipo_kind" not in df.columns:
         df["wipo_kind"] = ""
+
+    abstract_file = RAW_DIR / "g_patent_abstract.tsv"
+    if abstract_file.exists():
+        valid_patent_ids = set(df["patent_id"])
+        abstract_chunks = []
+        for abstract_df in iter_tsv_chunks(
+            "g_patent_abstract.tsv",
+            usecols=["patent_id", "patent_abstract"],
+        ):
+            abstract_df["patent_id"] = abstract_df["patent_id"].astype(str).str.strip()
+            abstract_df = abstract_df[abstract_df["patent_id"].isin(valid_patent_ids)]
+            if not abstract_df.empty:
+                abstract_chunks.append(abstract_df)
+
+        if abstract_chunks:
+            abstract_df = pd.concat(abstract_chunks, ignore_index=True)
+            abstract_df = abstract_df.drop_duplicates(subset=["patent_id"])
+            # Use map instead of merge to avoid dtype coercion issues
+            abstract_dict = dict(zip(abstract_df["patent_id"], abstract_df["patent_abstract"]))
+            df["patent_abstract"] = df["patent_id"].map(abstract_dict).fillna("")
+        else:
+            print("    [INFO] g_patent_abstract.tsv found but no matching sampled patent abstracts")
+    else:
+        print("    [INFO] g_patent_abstract.tsv not found; abstracts will be empty")
 
     # Rename columns to match our schema
     df = df.rename(columns={
@@ -199,6 +363,14 @@ def clean_patents() -> pd.DataFrame:
 # ─── 2. Inventors ─────────────────────────────────────────────────────────────
 def clean_inventors() -> pd.DataFrame:
     print("── Inventors ────────────────────────────────────────────────")
+    if SAMPLE_ROWS is None:
+        out_path = CLEAN_DIR / "clean_inventors.csv"
+        if out_path.exists():
+            out_path.unlink()
+
+        seen_ids = set()
+        first_write = True
+        total_saved = 0
     chunks = []
     loc_map = load_location_country_map()
 
@@ -248,7 +420,20 @@ def clean_inventors() -> pd.DataFrame:
         })
         out = out.dropna(subset=["inventor_id"])
         out = out[out["name"].str.len() > 1]
-        chunks.append(out)
+        out["inventor_id"] = out["inventor_id"].astype(str).str.strip()
+
+        if SAMPLE_ROWS is None:
+            out = out[~out["inventor_id"].isin(seen_ids)]
+            seen_ids.update(out["inventor_id"].tolist())
+            out.to_csv(out_path, index=False, mode="w" if first_write else "a", header=first_write)
+            first_write = False
+            total_saved += len(out)
+        else:
+            chunks.append(out)
+
+    if SAMPLE_ROWS is None:
+        print(f"  ✓ Saved  {out_path}  ({total_saved:,} rows)\n")
+        return None
 
     out = pd.concat(chunks, ignore_index=True).drop_duplicates(subset=["inventor_id"])
 
@@ -259,6 +444,14 @@ def clean_inventors() -> pd.DataFrame:
 # ─── 3. Companies (Assignees) ─────────────────────────────────────────────────
 def clean_companies() -> pd.DataFrame:
     print("── Companies (Assignees) ────────────────────────────────────")
+    if SAMPLE_ROWS is None:
+        out_path = CLEAN_DIR / "clean_companies.csv"
+        if out_path.exists():
+            out_path.unlink()
+
+        seen_ids = set()
+        first_write = True
+        total_saved = 0
     chunks = []
     loc_map = load_location_country_map()
 
@@ -303,7 +496,20 @@ def clean_companies() -> pd.DataFrame:
         })
         out = out.dropna(subset=["company_id", "name"])
         out["name"] = out["name"].astype(str).str.strip()
-        chunks.append(out)
+        out["company_id"] = out["company_id"].astype(str).str.strip()
+
+        if SAMPLE_ROWS is None:
+            out = out[~out["company_id"].isin(seen_ids)]
+            seen_ids.update(out["company_id"].tolist())
+            out.to_csv(out_path, index=False, mode="w" if first_write else "a", header=first_write)
+            first_write = False
+            total_saved += len(out)
+        else:
+            chunks.append(out)
+
+    if SAMPLE_ROWS is None:
+        print(f"  ✓ Saved  {out_path}  ({total_saved:,} rows)\n")
+        return None
 
     out = pd.concat(chunks, ignore_index=True)
 
@@ -316,9 +522,47 @@ def clean_companies() -> pd.DataFrame:
 
 
 # ─── 4. Relationships ────────────────────────────────────────────────────────
-def clean_relationships(patents_df: pd.DataFrame) -> None:
+def clean_relationships(patents_df: pd.DataFrame | None) -> None:
     print("── Relationships ────────────────────────────────────────────")
-    valid_patents = set(patents_df["patent_id"].astype(str))
+    valid_patents = set(patents_df["patent_id"].astype(str)) if patents_df is not None else None
+
+    # In full-load mode, avoid giant cross-join by writing inventor and company links as separate rows.
+    if valid_patents is None:
+        out_path = CLEAN_DIR / "clean_relationships.csv"
+        if out_path.exists():
+            out_path.unlink()
+
+        first_write = True
+        total_saved = 0
+
+        for pi in iter_tsv_chunks(
+            "g_inventor_disambiguated.tsv",
+            usecols=["patent_id", "inventor_id", "disambig_inventor_id"],
+        ):
+            if "inventor_id" not in pi.columns and "disambig_inventor_id" in pi.columns:
+                pi["inventor_id"] = pi["disambig_inventor_id"]
+            pi = pi[["patent_id", "inventor_id"]].dropna().drop_duplicates()
+            pi["company_id"] = None
+            pi = pi[["patent_id", "inventor_id", "company_id"]]
+            pi.to_csv(out_path, index=False, mode="w" if first_write else "a", header=first_write)
+            first_write = False
+            total_saved += len(pi)
+
+        for pa in iter_tsv_chunks(
+            "g_assignee_disambiguated.tsv",
+            usecols=["patent_id", "assignee_id", "disambig_assignee_id"],
+        ):
+            if "assignee_id" not in pa.columns and "disambig_assignee_id" in pa.columns:
+                pa["assignee_id"] = pa["disambig_assignee_id"]
+            pa = pa.rename(columns={"assignee_id": "company_id"})
+            pa = pa[["patent_id", "company_id"]].dropna().drop_duplicates()
+            pa["inventor_id"] = None
+            pa = pa[["patent_id", "inventor_id", "company_id"]]
+            pa.to_csv(out_path, index=False, mode="a", header=False)
+            total_saved += len(pa)
+
+        print(f"  ✓ Saved  {out_path}  ({total_saved:,} rows)\n")
+        return
 
     # patent ↔ inventor (from dedicated mapping file when available, otherwise from inventor table)
     patent_inventor_file = "g_patent_inventor.tsv"
@@ -331,7 +575,8 @@ def clean_relationships(patents_df: pd.DataFrame) -> None:
         if "inventor_id" not in pi.columns and "disambig_inventor_id" in pi.columns:
             pi["inventor_id"] = pi["disambig_inventor_id"]
         pi = pi[["patent_id", "inventor_id"]]
-        pi = pi[pi["patent_id"].astype(str).isin(valid_patents)]
+        if valid_patents is not None:
+            pi = pi[pi["patent_id"].astype(str).isin(valid_patents)]
         pi = pi.dropna().drop_duplicates()
         pi_chunks.append(pi)
     pi = pd.concat(pi_chunks, ignore_index=True).drop_duplicates()
@@ -348,7 +593,8 @@ def clean_relationships(patents_df: pd.DataFrame) -> None:
             pa["assignee_id"] = pa["disambig_assignee_id"]
         pa = pa.rename(columns={"assignee_id": "company_id"})
         pa = pa[["patent_id", "company_id"]]
-        pa = pa[pa["patent_id"].astype(str).isin(valid_patents)]
+        if valid_patents is not None:
+            pa = pa[pa["patent_id"].astype(str).isin(valid_patents)]
         pa = pa.dropna().drop_duplicates()
         pa_chunks.append(pa)
     pa = pd.concat(pa_chunks, ignore_index=True).drop_duplicates()
@@ -367,9 +613,17 @@ if __name__ == "__main__":
     print("=" * 60)
 
     patents   = clean_patents()
-    inventors = clean_inventors()
-    companies = clean_companies()
-    clean_relationships(patents)
+
+    inventors_file = CLEAN_DIR / "clean_inventors.csv"
+    companies_file = CLEAN_DIR / "clean_companies.csv"
+    relationships_file = CLEAN_DIR / "clean_relationships.csv"
+
+    if SAMPLE_ROWS is None and inventors_file.exists() and companies_file.exists() and relationships_file.exists():
+        print("  [INFO] Full patent refresh mode: reusing existing clean_inventors.csv, clean_companies.csv, and clean_relationships.csv")
+    else:
+        inventors = clean_inventors()
+        companies = clean_companies()
+        clean_relationships(patents)
 
     print("=" * 60)
     print("Cleaning complete.")

@@ -52,6 +52,16 @@ def chart_yearly_trend(conn: sqlite3.Connection) -> None:
         GROUP BY year ORDER BY year
     """)
 
+    if df.empty:
+        print("  [WARN] Skipping chart_yearly_trend: no data")
+        return
+    df["year"] = pd.to_numeric(df["year"], errors="coerce")
+    df["cnt"] = pd.to_numeric(df["cnt"], errors="coerce")
+    df = df.dropna(subset=["year", "cnt"])
+    if df.empty:
+        print("  [WARN] Skipping chart_yearly_trend: no numeric data")
+        return
+
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.fill_between(df["year"], df["cnt"], alpha=0.25, color=ACCENT)
     ax.plot(df["year"], df["cnt"], color=ACCENT, linewidth=2)
@@ -76,6 +86,14 @@ def chart_top_companies(conn: sqlite3.Connection) -> None:
         GROUP BY r.company_id
         ORDER BY cnt DESC LIMIT 15
     """)
+    if df.empty:
+        print("  [WARN] Skipping chart_top_companies: no data")
+        return
+    df["cnt"] = pd.to_numeric(df["cnt"], errors="coerce")
+    df = df.dropna(subset=["cnt"])
+    if df.empty:
+        print("  [WARN] Skipping chart_top_companies: no numeric data")
+        return
     df = df.sort_values("cnt")
 
     fig, ax = plt.subplots(figsize=(10, 7))
@@ -105,6 +123,14 @@ def chart_top_countries(conn: sqlite3.Connection) -> None:
         GROUP BY i.country
         ORDER BY cnt DESC LIMIT 12
     """)
+    if df.empty:
+        print("  [WARN] Skipping chart_top_countries: no data")
+        return
+    df["cnt"] = pd.to_numeric(df["cnt"], errors="coerce")
+    df = df.dropna(subset=["cnt"])
+    if df.empty:
+        print("  [WARN] Skipping chart_top_countries: no numeric data")
+        return
 
     fig, ax = plt.subplots(figsize=(8, 8))
     wedges, texts, autotexts = ax.pie(
@@ -136,6 +162,14 @@ def chart_top_inventors(conn: sqlite3.Connection) -> None:
         GROUP BY r.inventor_id
         ORDER BY cnt DESC LIMIT 15
     """)
+    if df.empty:
+        print("  [WARN] Skipping chart_top_inventors: no data")
+        return
+    df["cnt"] = pd.to_numeric(df["cnt"], errors="coerce")
+    df = df.dropna(subset=["cnt"])
+    if df.empty:
+        print("  [WARN] Skipping chart_top_inventors: no numeric data")
+        return
     df = df.sort_values("cnt")
     label = df["inventor"] + "  [" + df["country"] + "]"
 

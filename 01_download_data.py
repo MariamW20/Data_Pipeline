@@ -21,10 +21,9 @@ BASE_URL = "https://s3.amazonaws.com/data.patentsview.org/download/"
 # Full filenames from the PatentsView bulk download page
 FILES = {
     "patent": "g_patent.tsv.zip",
+    "patent_abstract": "g_patent_abstract.tsv.zip",
     "inventor": "g_inventor_disambiguated.tsv.zip",
     "assignee": "g_assignee_disambiguated.tsv.zip",
-    "patent_inventor": "g_persistent_inventor.tsv.zip",
-    "patent_assignee": "g_persistent_assignee.tsv.zip",
     "location": "g_location_disambiguated.tsv.zip",
     "pct_data": "g_pct_data.tsv.zip",
 }

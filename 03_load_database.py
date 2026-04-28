@@ -71,70 +71,74 @@ def load_csv(conn: sqlite3.Connection, filename: str, table: str) -> None:
         print(f"  [WARN] {filename} not found — skipping {table}")
         return
 
-    df = pd.read_csv(path, low_memory=False)
-
-    # Drop duplicate-name artifacts like "inventor_id.1" when base column exists.
-    drop_cols = []
-    for col in df.columns:
-        if "." in col:
-            base = col.split(".", 1)[0]
-            if base in df.columns:
-                drop_cols.append(col)
-    if drop_cols:
-        df = df.drop(columns=drop_cols)
-
     # Align to actual DB schema columns for this table.
-    table_cols = [
-        row[1]
-        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-    ]
+    table_cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
     if "id" in table_cols and table == "relationships":
         table_cols.remove("id")
 
-    missing = [c for c in table_cols if c not in df.columns]
-    if missing:
-        print(f"  [WARN] {table}: missing CSV columns {missing}; filling with NULL")
+    total_rows = 0
+    first_chunk = True
+
+    if table == "relationships":
+        conn.execute("DROP TABLE IF EXISTS _relationships_staging")
+        conn.execute(
+            """
+            CREATE TABLE _relationships_staging (
+                patent_id TEXT,
+                inventor_id TEXT,
+                company_id TEXT
+            )
+            """
+        )
+
+    for df in pd.read_csv(
+        path,
+        chunksize=100_000,
+        engine="python",
+        on_bad_lines="skip",
+    ):
+        drop_cols = []
+        for col in df.columns:
+            if "." in col:
+                base = col.split(".", 1)[0]
+                if base in df.columns:
+                    drop_cols.append(col)
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+
+        missing = [c for c in table_cols if c not in df.columns]
+        if missing and first_chunk:
+            print(f"  [WARN] {table}: missing CSV columns {missing}; filling with NULL")
         for col in missing:
             df[col] = None
 
-    extra = [c for c in df.columns if c not in table_cols]
-    if extra:
-        df = df.drop(columns=extra)
+        extra = [c for c in df.columns if c not in table_cols]
+        if extra:
+            df = df.drop(columns=extra)
 
-    df = df[table_cols]
+        df = df[table_cols]
+        target_table = "_relationships_staging" if table == "relationships" else table
+        df.to_sql(target_table, conn, if_exists="append", index=False, chunksize=50_000)
+        total_rows += len(df)
+        first_chunk = False
 
     if table == "relationships":
-        # Keep only relationships for loaded patents and null-out orphan foreign keys.
-        valid_patents = set(
-            pd.read_sql_query("SELECT patent_id FROM patents", conn)["patent_id"].astype(str)
+        conn.execute(
+            """
+            INSERT INTO relationships (patent_id, inventor_id, company_id)
+            SELECT
+                s.patent_id,
+                CASE WHEN i.inventor_id IS NOT NULL THEN s.inventor_id ELSE NULL END AS inventor_id,
+                CASE WHEN c.company_id IS NOT NULL THEN s.company_id ELSE NULL END AS company_id
+            FROM _relationships_staging s
+            JOIN patents p ON p.patent_id = s.patent_id
+            LEFT JOIN inventors i ON i.inventor_id = s.inventor_id
+            LEFT JOIN companies c ON c.company_id = s.company_id
+            """
         )
-        valid_inventors = set(
-            pd.read_sql_query("SELECT inventor_id FROM inventors", conn)["inventor_id"].astype(str)
-        )
-        valid_companies = set(
-            pd.read_sql_query("SELECT company_id FROM companies", conn)["company_id"].astype(str)
-        )
+        conn.execute("DROP TABLE IF EXISTS _relationships_staging")
 
-        df["patent_id"] = df["patent_id"].astype(str)
-        df = df[df["patent_id"].isin(valid_patents)]
-
-        if "inventor_id" in df.columns:
-            df["inventor_id"] = df["inventor_id"].astype(str)
-            df["inventor_id"] = df["inventor_id"].where(
-                df["inventor_id"].isin(valid_inventors),
-                None,
-            )
-
-        if "company_id" in df.columns:
-            df["company_id"] = df["company_id"].astype(str)
-            df["company_id"] = df["company_id"].where(
-                df["company_id"].isin(valid_companies),
-                None,
-            )
-
-    print(f"  Loading {table:15s}  ({len(df):>10,} rows) … ", end="", flush=True)
-    df.to_sql(table, conn, if_exists="append", index=False, chunksize=50_000)
-    print("done")
+    print(f"  Loading {table:15s}  ({total_rows:>10,} rows) … done")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -150,7 +154,8 @@ if __name__ == "__main__":
     print(f"\n  schema.sql written → {SCHEMA_SQL}\n")
 
     # Connect (creates the file if it doesn't exist)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=120)
+    conn.execute("PRAGMA busy_timeout=120000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")

@@ -25,6 +25,7 @@ BigData_Individual/
 |- PV_grant_data_dictionary.pdf 
 |- raw/                        <- Raw TSV files (input)
 |  |- g_location_disambiguated.tsv <- Location → country mapping source
+|  |- g_patent_abstract.tsv    <- Patent abstract source
 |- clean/                      <- Clean CSV files
 |- reports/                    <- CSV/JSON/PNG
 `- patents.db                  <- SQLite database
@@ -163,6 +164,12 @@ Why `Unknown` can still appear:
 Why code-like values may still appear occasionally:
 
 - Some country identifiers are not recognized by the mapper and are kept as-is to avoid data loss.
+
+Abstract values are generated using this path:
+
+1. `g_patent.tsv` provides core patent metadata (`patent_id`, title, dates, type).
+2. `g_patent_abstract.tsv` provides `patent_abstract`.
+3. The cleaner joins both datasets on `patent_id`.
 
 ---
 
