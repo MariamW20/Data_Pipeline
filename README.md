@@ -68,7 +68,7 @@ python 02_clean_data.py
 # Step 3 — Load into SQLite
 python 03_load_database.py
 
-# Step 4 — Run analysis + generate reports
+# Step 4 — Run analysis + generate reports (reads SQL from queries.sql)
 python 04_analyze.py
 
 # Step 5 — Generate charts

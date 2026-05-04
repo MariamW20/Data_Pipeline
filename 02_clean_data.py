@@ -268,7 +268,6 @@ def clean_patents() -> pd.DataFrame:
             chunk["title"] = chunk["title"].astype(str).str.strip()
             chunk["abstract"] = chunk["abstract"].fillna("").astype(str).str.strip()
             chunk["patent_type"] = chunk["patent_type"].fillna("").astype(str).str.strip().str.lower()
-            chunk = chunk[chunk["patent_type"].isin(["utility", "reissue", ""])]
 
             chunk = chunk[["patent_id", "title", "abstract", "filing_date", "year", "patent_type", "wipo_kind"]]
             chunk["filing_date"] = chunk["filing_date"].dt.strftime("%Y-%m-%d")
@@ -348,9 +347,8 @@ def clean_patents() -> pd.DataFrame:
     df["title"]    = df["title"].astype(str).str.strip()
     df["abstract"] = df["abstract"].fillna("").astype(str).str.strip()
 
-    # Keep only utility patents (most common; ignore design/plant)
+    # Keep all patent types to preserve full PatentsView row counts.
     df["patent_type"] = df["patent_type"].fillna("").astype(str).str.strip().str.lower()
-    df = df[df["patent_type"].isin(["utility", "reissue", ""])]
 
     # Final column order
     df = df[["patent_id", "title", "abstract", "filing_date", "year", "patent_type", "wipo_kind"]]
