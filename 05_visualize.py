@@ -132,19 +132,23 @@ def chart_top_countries(conn: sqlite3.Connection) -> None:
         print("  [WARN] Skipping chart_top_countries: no numeric data")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 8))
-    wedges, texts, autotexts = ax.pie(
-        df["cnt"],
-        labels=df["country"],
-        autopct="%1.1f%%",
-        colors=GRADIENT,
-        startangle=140,
-        pctdistance=0.82,
-    )
-    for t in autotexts:
-        t.set_fontsize(8)
-        t.set_color("#0f172a")
-    ax.set_title("Patent Share by Country", fontsize=15, pad=16)
+    df = df.sort_values("cnt", ascending=True)
+    total = df["cnt"].sum()
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = [GRADIENT[i % len(GRADIENT)] for i in range(len(df))]
+    bars = ax.barh(df["country"], df["cnt"], color=colors, height=0.65, edgecolor="#334155", linewidth=0.8)
+    
+    # Add labels with count and percentage
+    for bar, val in zip(bars, df["cnt"]):
+        pct = (val / total * 100) if total else 0
+        ax.text(bar.get_width() + total * 0.01, bar.get_y() + bar.get_height() / 2,
+                f"{int(val):,} ({pct:.1f}%)", va="center", fontsize=9, color="#cbd5e1")
+    
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+    ax.set_title("Patent Share by Country", fontsize=15, pad=16, color="#f1f5f9")
+    ax.set_xlabel("Number of Patents", color="#cbd5e1")
+    ax.grid(True, axis="x", alpha=0.3)
     plt.tight_layout()
     path = os.path.join(REPORTS_DIR, "chart_country_share.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")

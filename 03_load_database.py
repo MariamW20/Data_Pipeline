@@ -11,7 +11,6 @@ from project_paths import CLEAN_DIR, DB_PATH, SCHEMA_SQL, ensure_directories
 # ─── Paths ────────────────────────────────────────────────────────────────────
 ensure_directories()
 
-
 # ─── Schema ───────────────────────────────────────────────────────────────────
 SCHEMA = """
 -- ─── Drop existing tables (clean slate) ─────────────────────────────────────

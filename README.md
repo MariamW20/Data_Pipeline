@@ -20,6 +20,7 @@ BigData_Individual/
 |- schema.sql
 |- queries.sql
 |- requirements.txt
+|- optimize_db.py              <- Create database indexes
 |- README.md
 |- Data Pipeline Mini Project.pdf
 |- PV_grant_data_dictionary.pdf 
@@ -27,7 +28,12 @@ BigData_Individual/
 |  |- g_location_disambiguated.tsv <- Location → country mapping source
 |  |- g_patent_abstract.tsv    <- Patent abstract source
 |- clean/                      <- Clean CSV files
-|- reports/                    <- CSV/JSON/PNG
+|- reports/                    <- CSV/JSON/PNG charts
+|- scripts/
+|  |- train_company_velocity.py <- Train supervised ML model for filing predictions
+|- models/                     <- Trained model artifacts
+|  |- company_velocity_model.joblib <- Persisted RandomForest model
+|  `- company_velocity_metadata.json <- Feature names, label encoder, metrics
 `- patents.db                  <- SQLite database
 ```
 
@@ -74,7 +80,13 @@ python 04_analyze.py
 # Step 5 — Generate charts
 python 05_visualize.py
 
-# Step 6 — Launch interactive dashboard
+# (Optional) Step 6a — Create database indexes for faster queries
+python optimize_db.py
+
+# (Optional) Step 6b — Train supervised ML model for company filing predictions
+python scripts/train_company_velocity.py
+
+# Step 7 — Launch interactive dashboard
 streamlit run 06_dashboard.py
 ```
 
@@ -142,8 +154,47 @@ streamlit run 06_dashboard.py
 | `patent_report.json` | Full summary in JSON format |
 | `chart_yearly_trend.png` | Line chart — patents over time |
 | `chart_top_companies.png` | Bar chart — top companies |
-| `chart_country_share.png` | Pie chart — country distribution |
+| `chart_country_share.png` | Horizontal bar chart — country distribution (with percentages) |
 | `chart_top_inventors.png` | Bar chart — top inventors |
+
+---
+
+## Dashboard Features (06_dashboard.py)
+
+The Streamlit dashboard provides an interactive, visually refined interface with:
+
+### Visual Design
+- **Dark theme** with custom gradient backgrounds and glass-morphism UI elements
+- **Improved chart readability**: increased title padding (26px), refined subtitle placement, and contrast-optimized foreground colors
+- **Consistent styling**: all charts use a unified `apply_chart_style()` function for visual cohesion
+
+### 6 Main Tabs
+
+1. **Trends** — Patent growth over time with rolling averages, decade grouping, and peak annotations
+2. **Inventors** — Top inventors ranked by patent count, inventor productivity distribution
+3. **Companies** — Top companies with Pareto pattern analysis (concentration metrics)
+4. **Countries** — Geographic distribution with treemap visualization showing inventor productivity per country
+5. **Explore** — Searchable patent database by keyword with time-series results
+6. **Insights & Predictions** — Advanced analytics including:
+   - **Filing Rate Forecast** (2025–2029): polynomial trend fitting with 95% confidence intervals
+   - **Emerging Tech Analysis**: keyword-based identification of AI, blockchain, IoT, quantum, biotech, renewable energy patents
+   - **Inventor Longevity Trends**: career span distribution and patents vs. experience correlation
+   - **Company Patent Velocity Comparison**: side-by-side filing trends across top firms
+   - **Data Quality Diagnostics**: missing data analysis, coverage breadth, recency metrics, and outlier detection
+   - **Supervised ML Model** (RandomForest Regressor): predicts next-year company patent filings based on lagged counts, inventor history, and growth indicators
+
+### Machine Learning Integration
+
+- **Model**: Trained RandomForest (300 trees) on company-year panels (2012–2024)
+- **Features**: lagged filings (1, 2+ years), inventor counts, growth rates, country code, year
+- **Metrics**: Test R² = 0.964, RMSE ≈ 2.81, MAE ≈ 0.57
+- **Output**: 2025 filing predictions for top 12 companies with summary metrics (avg change, max growth, growth count)
+- **Artifacts**: Model saved as `models/company_velocity_model.joblib`; metadata in `models/company_velocity_metadata.json`
+
+### Performance Optimizations
+- **Caching**: expensive queries cached with `@st.cache_data(ttl=3600)` (e.g., filing trends, emerging tech keywords)
+- **Database Indexing**: indexes on `patents.year`, relationship foreign keys, for sub-second query response
+- **Streaming Architecture**: asynchronous chart rendering prevents UI blocking
 
 ---
 
@@ -184,7 +235,7 @@ Delivered requirements:
 - Required tables: patents, inventors, companies, relationships.
 - Required SQL outputs Q1–Q7.
 - Required reports: console summary, CSV files, JSON report.
-- Bonus deliverables: visualizations and Streamlit dashboard.
+- Bonus deliverables: visualizations (PNG charts), interactive Streamlit dashboard, supervised ML model for predictions.
 
 ---
 
