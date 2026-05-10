@@ -5,6 +5,9 @@ Run with:  streamlit run scripts/06_dashboard.py
 
 import os
 import json
+from project_paths import DB_PATH
+from project_paths import REPORTS_DIR
+from pathlib import Path
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -27,7 +30,7 @@ CHART_PALETTE = ["#0ea5a4", "#f59e0b", "#6366f1", "#a78bfa", "#fb7185", "#34d399
 
 st.set_page_config(
     page_title="Global Patent Intelligence",
-    page_icon=":material/travel_explore:",
+    page_icon=None,
     layout="wide",
 )
 
@@ -478,7 +481,7 @@ st.markdown(
         <div class='insight-card'>
             <div class='label'>Geography lens</div>
             <div class='value'>Where innovation clusters</div>
-            <div class='note'>Country distribution is shown as both bars and share-based pies.</div>
+            <div class='note'>Country distribution is shown as both bars and a treemap.</div>
         </div>
     </div>
     """,
@@ -727,7 +730,7 @@ with tab4:
             plt.tight_layout()
             st.pyplot(fig, clear_figure=True)
 
-            st.caption("💡 Treemap area shows total patents; color indicates avg patents per inventor.")
+            st.caption("Insight: Treemap area shows total patents; color indicates avg patents per inventor.")
         else:
             st.info("No inventor productivity data available.")
 
@@ -887,7 +890,7 @@ with tab6:
             st.metric("Projected trend", f"{forecast_change:+.1f}%")
         
         st.caption(
-            f"⚠️ Forecast assumes continuation of historical trend. Confidence interval widens beyond data range, reflecting uncertainty."
+            f"Note: Forecast assumes continuation of historical trend. Confidence interval widens beyond data range, reflecting uncertainty."
         )
     else:
         st.info("No historical data available for forecasting.")
@@ -944,7 +947,7 @@ with tab6:
     plt.tight_layout()
     st.pyplot(fig, clear_figure=True)
     
-    st.caption("🔍 Keywords matched in patent titles (case-insensitive). Counts represent patent documents, not unique inventions.")
+    st.caption("Keywords matched in patent titles (case-insensitive). Counts represent patent documents, not unique inventions.")
 
     st.divider()
 
@@ -1093,14 +1096,14 @@ with tab6:
         with inv_col3:
             st.metric("Trend slope (R²)", f"{r_value**2:.3f}")
         
-        st.caption("📊 R² measures goodness-of-fit; higher values indicate stronger linear correlation.")
+        st.caption("R² measures goodness-of-fit; higher values indicate stronger linear correlation.")
     else:
         st.info("No inventor activity data available for the forecast period.")
 
     st.divider()
 
     # Data Diagnostics Section
-    st.markdown("<h3 style='margin-top: 1.2rem; color: #f8fafc;'>📊 Data Quality Diagnostics</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 1.2rem; color: #f8fafc;'>Data Quality Diagnostics</h3>", unsafe_allow_html=True)
 
     diag_col1, diag_col2, diag_col3 = st.columns(3)
 
@@ -1156,13 +1159,41 @@ with tab6:
         """)
         mega_count = len(outlier_info)
         st.metric("'Mega' inventors (100+)", f"{mega_count:,}")
-        st.caption("⚠️ High-volume entities may skew analysis.")
+        st.caption("High-volume entities may skew analysis.")
 
     st.divider()
 
     # Company Velocity Prediction Model (Trained Supervised Regressor)
-    st.markdown("<h3 style='margin-top: 1.2rem; color: #f8fafc;'>🚀 Company Patent Velocity Prediction Model</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 1.2rem; color: #f8fafc;'>Company Patent Velocity Prediction Model</h3>", unsafe_allow_html=True)
     st.markdown("**Trained RandomForest Regressor**: Predicts next-year filings from lagged filing counts, inventor history, and growth indicators.", unsafe_allow_html=True)
+
+    # Screenshots uploader for console reports
+    screenshots_dir = Path(REPORTS_DIR) / "screenshots"
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
+
+    st.markdown("<h4 style='margin-top: 0.6rem; color: #f8fafc;'>Console Report Screenshots</h4>", unsafe_allow_html=True)
+    uploaded_files = st.file_uploader(
+        "Upload console screenshot(s) for the report (PNG/JPEG). Files will be saved to reports/screenshots.",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+    )
+    if uploaded_files:
+        saved = []
+        for up in uploaded_files:
+            target = screenshots_dir / up.name
+            with open(target, "wb") as f:
+                f.write(up.getbuffer())
+            saved.append(up.name)
+        st.success(f"Saved {len(saved)} screenshot(s) to reports/screenshots")
+
+    # Display saved screenshots
+    imgs = sorted(screenshots_dir.glob("*"))
+    if imgs:
+        st.markdown("### Saved screenshots", unsafe_allow_html=True)
+        cols = st.columns(3)
+        for i, img in enumerate(imgs):
+            with cols[i % 3]:
+                st.image(str(img), use_column_width=True, caption=img.name)
 
     @st.cache_resource
     def load_trained_model():
@@ -1306,8 +1337,8 @@ with tab6:
             with summary_col4:
                 st.metric("Avg. 2025 forecast", f"{pred_df['Predicted 2025 Filings'].mean():.0f}")
 
-            st.caption("📊 **Model Details**: Trained RandomForest (n_estimators=300) on company-year panels (2012–2024) using lagged filings, inventor counts, and growth rates. Test R²=0.964. Predictions use 2022–2024 recent history.")
+            st.caption("Model Details: Trained RandomForest (n_estimators=300) on company-year panels (2012–2024) using lagged filings, inventor counts, and growth rates. Test R²=0.964. Predictions use 2022–2024 recent history.")
         else:
             st.info("Insufficient company data for model prediction (require 10+ patents).")
     else:
-        st.warning("⚠️ Trained model not found. Run `python scripts/train_company_velocity.py` first.")
+        st.warning("Trained model not found. Run `python scripts/train_company_velocity.py` first.")

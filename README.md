@@ -224,25 +224,20 @@ Abstract values are generated using this path:
 
 ---
 
-## Requirement Alignment
-
-This implementation follows the project brief in `Data Pipeline Mini Project.pdf` and uses
-`PV_grant_data_dictionary.pdf` as the field-level reference for granted patent data.
-
 Delivered requirements:
 
 - End-to-end pipeline: download → clean → SQL load → analysis → reports.
 - Required tables: patents, inventors, companies, relationships.
 - Required SQL outputs Q1–Q7.
 - Required reports: console summary, CSV files, JSON report.
-- Bonus deliverables: visualizations (PNG charts), interactive Streamlit dashboard, supervised ML model for predictions.
+- Other deliverables: visualizations (PNG charts), interactive Streamlit dashboard, supervised ML model for predictions.
 
 ---
 
 ## 🔗 Data Source
 
 - **PatentsView Bulk Data**: https://data.patentsview.org/
-- **Data Dictionary**: PV_grant_data_dictionary.pdf (available on the same page)
+- **Data Dictionary**: PV_grant_data_dictionary.pdf 
 - **License**: USPTO data is in the public domain
 
 ---
