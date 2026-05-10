@@ -223,22 +223,12 @@ Abstract values are generated using this path:
 3. The cleaner joins both datasets on `patent_id`.
 
 ---
-
-Delivered requirements:
-
-- End-to-end pipeline: download → clean → SQL load → analysis → reports.
-- Required tables: patents, inventors, companies, relationships.
-- Required SQL outputs Q1–Q7.
-- Required reports: console summary, CSV files, JSON report.
-- Other deliverables: visualizations (PNG charts), interactive Streamlit dashboard, supervised ML model for predictions.
-
 ---
 
 ## 🔗 Data Source
 
 - **PatentsView Bulk Data**: https://data.patentsview.org/
 - **Data Dictionary**: PV_grant_data_dictionary.pdf 
-- **License**: USPTO data is in the public domain
 
 ---
 
