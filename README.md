@@ -3,6 +3,8 @@
 A complete data engineering project that collects, cleans, stores and analyzes
 real-world patent data from the USPTO PatentsView dataset.
 
+GitHub Repo: https://github.com/MariamW20/Data_Pipeline
+
 ---
 
 ## Project Structure
